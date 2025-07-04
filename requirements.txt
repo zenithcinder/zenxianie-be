@@ -1,0 +1,20 @@
+# This file is generated from Pipfile.lock - Do not edit directly
+# Use 'make update-requirements' to update this file from Pipfile.lock
+Django==5.0.2
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.3.1
+python-dotenv==1.0.1
+psycopg2-binary==2.9.9
+Pillow==10.2.0
+django-filter==24.1
+drf-yasg==1.21.7
+dj-database-url==2.1.0
+gunicorn==21.2.0
+python-socketio==5.11.1
+python-engineio==4.9.0
+channels==4.0.0
+channels-redis==4.2.0
+daphne==4.1.0
+uvicorn==0.27.1
+factory-boy==3.3.0 

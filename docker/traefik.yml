@@ -1,0 +1,53 @@
+# Traefik configuration
+api:
+  dashboard: true
+  insecure: true  # Set to false in production and use proper authentication
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "your-email@example.com"  # Change this to your email
+      storage: "/etc/traefik/acme.json"
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    watch: true
+    exposedByDefault: false
+
+log:
+  level: INFO  # Change to DEBUG for troubleshooting
+
+accessLog:
+  filePath: "/var/log/traefik/access.log"
+  bufferingSize: 100
+
+# Security headers
+headers:
+  sslRedirect: true
+  forceSTSHeader: true
+  stsIncludeSubdomains: true
+  stsPreload: true
+  stsSeconds: 31536000
+  customFrameOptionsValue: "SAMEORIGIN"
+  contentTypeNosniff: true
+  browserXssFilter: true
+  referrerPolicy: "strict-origin-when-cross-origin"
+  permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=()" 

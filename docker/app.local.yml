@@ -1,0 +1,62 @@
+name: $DOCKER_COMPOSE_LOCAL_NAME
+services:
+  backend:
+    build: ../
+    command: >
+      sh -c "pipenv run python manage.py wait_for_db &&
+             pipenv run python manage.py migrate &&
+             pipenv run daphne -b 0.0.0.0 -p 8000 app.config.asgi:application"
+    volumes:
+      - ../:/app
+    ports:
+      - "0.0.0.0:8000:8000"
+      - "0.0.0.0:8001:8001"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5435
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEBUG=1
+      - SECRET_KEY=somethingsupersecret
+      - ALLOWED_HOSTS=*
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    ports:
+      - "5435:5432"
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=zenxianie_parking
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.0.1-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

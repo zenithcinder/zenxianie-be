@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  reverse-proxy:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: always
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.swarmMode=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.ws.address=:8001"
+      - "--entrypoints.ws.http.upgrade=true"
+      - "--entrypoints.ws.http.upgrade.websocket=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8001:8001"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik.yml:/etc/traefik/traefik.yml"
+      - "traefik_data:/etc/traefik"
+      - "traefik_logs:/var/log/traefik"
+    networks:
+      - traefik-public
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+  app:
+    image: ghcr.io/${GITHUB_REPOSITORY:<[REDACTED]>}:${APP_VERSION:-latest}
+    restart: always
+    environment:
+      - DJANGO_SETTINGS_MODULE=app.config.settings
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - CHANNEL_LAYERS_REDIS_HOST=${REDIS_HOST}
+      - CHANNEL_LAYERS_REDIS_PORT=${REDIS_PORT}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+      - DJANGO_CORS_ALLOWED_ORIGINS=${DJANGO_CORS_ALLOWED_ORIGINS}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.services.app.loadbalancer.server.port=8011"
+      - "traefik.http.services.app.loadbalancer.sticky=true"
+      - "traefik.http.services.app.loadbalancer.sticky.cookie.name=session"
+      - "traefik.ws.routers.app-ws.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.ws.services.app-ws.loadbalancer.server.port=8001"
+      - "traefik.ws.services.app-ws.loadbalancer.sticky=true"
+      - "traefik.ws.services.app-ws.loadbalancer.sticky.cookie.name=ws_session"
+    networks:
+      - traefik-public
+      - backend
+    deploy:
+      replicas: ${APP_REPLICAS:-3}
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          cpus: '${APP_CPU_LIMIT:-0.50}'
+          memory: ${APP_MEMORY_LIMIT:-512M}
+        reservations:
+          cpus: '${APP_CPU_RESERVATION:-0.25}'
+          memory: ${APP_MEMORY_RESERVATION:-256M}
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:${POSTGRES_VERSION:-14}
+    container_name: postgres-db
+    restart: always
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          cpus: '${DB_CPU_LIMIT:-1.0}'
+          memory: ${DB_MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: '${DB_CPU_RESERVATION:-0.5}'
+          memory: ${DB_MEMORY_RESERVATION:-512M}
+
+  redis:
+    image: redis:${REDIS_VERSION:-7-alpine}
+    container_name: redis
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          cpus: '${REDIS_CPU_LIMIT:-0.5}'
+          memory: ${REDIS_MEMORY_LIMIT:-512M}
+        reservations:
+          cpus: '${REDIS_CPU_RESERVATION:-0.25}'
+          memory: ${REDIS_MEMORY_RESERVATION:-256M}
+
+networks:
+  traefik-public:
+    driver: overlay
+    attachable: true
+  backend:
+    driver: overlay
+    internal: true
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  traefik_data:
+    driver: local
+  traefik_logs:
+    driver: local
